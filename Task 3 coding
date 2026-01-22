@@ -1,0 +1,164 @@
+//SERVER CODE//
+import java.io.*;
+import java.net.*;
+import java.util.*;
+
+/**
+ * ChatServer
+ * Accepts multiple clients using multithreading.
+ */
+public class ChatServer {
+
+    private static Set<ClientHandler> clientHandlers = new HashSet<>();
+
+    public static void main(String[] args) {
+        int port = 1234;
+        System.out.println("Chat Server started on port " + port);
+
+        try (ServerSocket serverSocket = new ServerSocket(port)) {
+
+            while (true) {
+                Socket socket = serverSocket.accept();
+                System.out.println("New client connected");
+
+                ClientHandler clientHandler = new ClientHandler(socket);
+                clientHandlers.add(clientHandler);
+
+                new Thread(clientHandler).start();
+            }
+
+        } catch (IOException e) {
+            System.out.println("Server Error: " + e.getMessage());
+        }
+    }
+
+    // Broadcast message to all clients
+    static void broadcast(String message, ClientHandler sender) {
+        for (ClientHandler client : clientHandlers) {
+            if (client != sender) {
+                client.sendMessage(message);
+            }
+        }
+    }
+
+    // Remove disconnected client
+    static void removeClient(ClientHandler client) {
+        clientHandlers.remove(client);
+        System.out.println("Client disconnected");
+    }
+}
+
+
+
+
+//CLIENT HANDLER//
+import java.io.*;
+import java.net.*;
+
+/**
+ * ClientHandler
+ * Handles communication with one client.
+ */
+public class ClientHandler implements Runnable {
+
+    private Socket socket;
+    private BufferedReader in;
+    private PrintWriter out;
+
+    public ClientHandler(Socket socket) {
+        this.socket = socket;
+
+        try {
+            in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            out = new PrintWriter(socket.getOutputStream(), true);
+        } catch (IOException e) {
+            System.out.println("ClientHandler Error");
+        }
+    }
+
+    @Override
+    public void run() {
+        try {
+            out.println("Welcome to the chat!");
+
+            String message;
+            while ((message = in.readLine()) != null) {
+                System.out.println("Received: " + message);
+                ChatServer.broadcast(message, this);
+            }
+        } catch (IOException e) {
+            System.out.println("Connection lost");
+        } finally {
+            closeConnection();
+        }
+    }
+
+    void sendMessage(String message) {
+        out.println(message);
+    }
+
+    private void closeConnection() {
+        try {
+            ChatServer.removeClient(this);
+            socket.close();
+        } catch (IOException e) {
+            System.out.println("Error closing connection");
+        }
+    }
+}
+
+
+
+
+//CLIENT CODE//
+import java.io.*;
+import java.net.*;
+
+/**
+ * ChatClient
+ * Connects to chat server and sends/receives messages.
+ */
+public class ChatClient {
+
+    public static void main(String[] args) {
+        String serverAddress = "localhost";
+        int port = 1234;
+
+        try {
+            Socket socket = new Socket(serverAddress, port);
+            System.out.println("Connected to chat server");
+
+            BufferedReader keyboard =
+                    new BufferedReader(new InputStreamReader(System.in));
+
+            BufferedReader in =
+                    new BufferedReader(new InputStreamReader(socket.getInputStream()));
+
+            PrintWriter out =
+                    new PrintWriter(socket.getOutputStream(), true);
+
+            // Thread to read messages from server
+            new Thread(() -> {
+                try {
+                    String msg;
+                    while ((msg = in.readLine()) != null) {
+                        System.out.println("Server: " + msg);
+                    }
+                } catch (IOException e) {
+                    System.out.println("Disconnected from server");
+                }
+            }).start();
+
+            // Send messages to server
+            String input;
+            while ((input = keyboard.readLine()) != null) {
+                out.println(input);
+            }
+
+            socket.close();
+
+        } catch (IOException e) {
+            System.out.println("Client Error: " + e.getMessage());
+        }
+    }
+}
